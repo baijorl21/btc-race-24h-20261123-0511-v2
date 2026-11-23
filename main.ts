@@ -12,7 +12,7 @@
 //     Size is 85% of equity, scaled down if the pool depth would make the impact exceed ~12 bps.
 //   - Exit: a wide trailing stop (220 bps under the best close since entry) so ordinary pullbacks
 //     do not shake the position out, plus a hard stop 130 bps under the entry fill for the case
-//     where the "trend" was a head-fake. After an exit the bot sits out 90 bars before it may
+//     where the "trend" was a head-fake. After an exit the bot sits out 120 bars before it may
 //     re-enter, which keeps a sideways tape from turning into a string of paid round trips.
 //
 // Everything is a pure function of the bars seen so far: no clock, no environment, no randomness,
@@ -28,7 +28,8 @@ const TRAILING_STOP = 0.022; // exit 220 bps below the best close since entry
 const HARD_STOP = 0.013; // exit 130 bps below the entry fill price
 const SIZE_FRACTION = 85n; // percent of equity per entry
 const MAX_IMPACT_BPS = 12n; // scale the order down rather than push the pool harder than this
-const COOLDOWN_BARS = 90; // bars to sit out after an exit
+const COOLDOWN_BARS = 120; // bars to sit out after an exit (two hours: a re-entry sooner than
+// that is usually the same sideways tape charging another round trip)
 const WINDOW_BARS = 1440; // both the dev and the race window are 24h of 1-minute bars
 const NO_ENTRY_TAIL_BARS = 120; // stop opening new positions this many bars before the end
 const SLIPPAGE_CAP_BPS = 250; // room for the modelled slippage, our impact and a bar of drift
@@ -96,7 +97,9 @@ await runBars({
 
     // Flat: look for a trend worth paying the round trip for.
     const windowBar = state.seq - state.warmupBars;
-    const uptrend = fastEma > slowEma * TREND_MARGIN && close > slowEma;
+    // Strength confirmation: besides the regime check, the close must also sit above the
+    // fast EMA, so we buy into strength rather than catching the first dip of a rollover.
+    const uptrend = fastEma > slowEma * TREND_MARGIN && close > slowEma && close > fastEma;
     if (!uptrend || barsSeen < MIN_HISTORY_BARS || barsSeen <= cooldownUntilBar) return [];
     if (windowBar >= WINDOW_BARS - NO_ENTRY_TAIL_BARS) return [];
 
